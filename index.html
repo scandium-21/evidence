@@ -527,14 +527,18 @@
         try {
           const folderRes = await postToAppsScript(
             chosenEvent
-              ? { mode: 'existing', folderId: chosenEvent.folderId }
+              ? {
+                  action: 'prepareFolder',
+                  mode: 'existing',
+                  folderId: chosenEvent.folderId,
+                }
               : {
+                  action: 'prepareFolder',
                   mode: 'new',
                   date: dateInput.value,
                   event: eventInput.value.trim(),
                 }
           );
-
           let uploadedCount = 0;
           for (let i = 0; i < selectedFiles.length; i++) {
             const item = selectedFiles[i];

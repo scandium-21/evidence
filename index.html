@@ -66,7 +66,6 @@
         </p>
       </div>
 
-      <!-- Setup warning if APPS_SCRIPT_URL is not configured -->
       <div
         id="config-warning"
         class="hidden p-4 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-900"
@@ -75,7 +74,6 @@
         <span class="font-mono">index.html</span> to your deployed Google Apps Script Web App URL.
       </div>
 
-      <!-- Result Banner (shown after submit) -->
       <section
         id="result-card"
         class="hidden bg-white border border-emerald-200 rounded-xl p-6 space-y-4"
@@ -113,11 +111,22 @@
             Open Drive
           </a>
         </div>
+
+        <div class="pt-3 border-t border-slate-100 flex items-center justify-between gap-4">
+          <span class="text-xs text-slate-500">
+            Finished with this event?
+          </span>
+          <button
+            id="reset-new-btn"
+            type="button"
+            class="px-4 py-2 text-xs font-semibold text-slate-800 bg-white hover:bg-slate-50 border border-slate-300 rounded-lg whitespace-nowrap shrink-0 transition-colors"
+          >
+            Fill in New
+          </button>
+        </div>
       </section>
 
-      <!-- Main Form -->
       <form id="upload-form" class="bg-white border border-slate-200 rounded-xl p-6 space-y-6">
-        <!-- Existing Event Dropdown from Google Sheet -->
         <div>
           <div class="flex items-center justify-between gap-3 mb-2">
             <label for="existing-select" class="text-sm font-semibold text-slate-900">
@@ -146,7 +155,6 @@
 
         <hr class="border-slate-100" />
 
-        <!-- Date & Event -->
         <div class="grid grid-cols-1 sm:grid-cols-12 gap-4">
           <div class="sm:col-span-5">
             <label for="date-input" class="block text-sm font-medium text-slate-800 mb-1.5">
@@ -174,7 +182,6 @@
           </div>
         </div>
 
-        <!-- Concatenated Folder Name Preview -->
         <div class="p-3.5 bg-slate-50 border border-slate-200 rounded-lg flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
           <span class="text-xs text-slate-500">Google Drive folder name</span>
           <span id="folder-preview" class="font-mono text-sm font-semibold text-slate-900">
@@ -184,7 +191,6 @@
 
         <hr class="border-slate-100" />
 
-        <!-- Upload Files (Photo / Video, Max 10) -->
         <div>
           <div class="flex items-center justify-between mb-2">
             <span class="text-sm font-semibold text-slate-900">
@@ -261,6 +267,7 @@
       const resultLinkInput = document.getElementById('result-link-input');
       const copyLinkBtn = document.getElementById('copy-link-btn');
       const openDriveLink = document.getElementById('open-drive-link');
+      const resetNewBtn = document.getElementById('reset-new-btn');
 
       let eventsFromSheet = [];
       let selectedFiles = [];
@@ -348,6 +355,27 @@
           li.appendChild(removeBtn);
           fileList.appendChild(li);
         });
+      }
+
+      function resetAllFields() {
+        existingSelect.value = '';
+        dateInput.disabled = false;
+        eventInput.disabled = false;
+        dateInput.value = todayISO();
+        eventInput.value = '';
+        modeHelper.textContent =
+          'Leave on default to create a new event, or select an existing event to lock Date and Event and add more files.';
+        selectedFiles = [];
+        fileInput.value = '';
+        fileAlert.classList.add('hidden');
+        fileAlert.textContent = '';
+        showError('');
+        resultCard.classList.add('hidden');
+        resultLinkInput.value = '';
+        openDriveLink.href = '#';
+        updateFolderPreview();
+        renderFileList();
+        eventInput.focus();
       }
 
       function addMediaFiles(fileListObj) {
@@ -449,6 +477,7 @@
       dateInput.addEventListener('input', updateFolderPreview);
       eventInput.addEventListener('input', updateFolderPreview);
       refreshBtn.addEventListener('click', loadEventsFromSheet);
+      resetNewBtn.addEventListener('click', resetAllFields);
 
       dropzone.addEventListener('click', () => {
         if (!isSubmitting && selectedFiles.length < MAX_FILES) fileInput.click();
@@ -484,7 +513,6 @@
       }
 
       async function postToAppsScript(bodyObj) {
-        // Use text/plain to avoid CORS preflight failures on Google Apps Script
         const res = await fetch(APPS_SCRIPT_URL, {
           method: 'POST',
           headers: { 'Content-Type': 'text/plain;charset=utf-8' },
@@ -514,6 +542,10 @@
           ? eventsFromSheet.find((ev) => String(ev.row) === chosenRow)
           : null;
 
+        if (chosenEvent && !chosenEvent.folderId) {
+          showError('Selected event does not have a valid Drive folder link in column D.');
+          return;
+        }
         if (!chosenEvent && (!dateInput.value || !eventInput.value.trim())) {
           showError('Please fill in both Date and Event.');
           return;
@@ -539,9 +571,15 @@
                   event: eventInput.value.trim(),
                 }
           );
+
           let uploadedCount = 0;
           for (let i = 0; i < selectedFiles.length; i++) {
             const item = selectedFiles[i];
+            if (item.statusText === 'Uploaded') {
+              uploadedCount++;
+              continue;
+            }
+
             item.statusText = 'Uploading...';
             renderFileList();
 
@@ -584,7 +622,6 @@
         }, 2000);
       });
 
-      // Init
       dateInput.value = todayISO();
       updateFolderPreview();
       loadEventsFromSheet();

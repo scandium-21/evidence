@@ -1,0 +1,589 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>EventDrive — Event Photo & Video Uploader</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@600;700&display=swap"
+      rel="stylesheet"
+    />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+      body {
+        font-family: "DM Sans", system-ui, -apple-system, sans-serif;
+        background-color: #f8fafc;
+        color: #0f172a;
+      }
+      h1, h2, h3 {
+        font-family: "Plus Jakarta Sans", system-ui, -apple-system, sans-serif;
+      }
+      .font-mono {
+        font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+      }
+      .tabular-nums {
+        font-variant-numeric: tabular-nums;
+      }
+    </style>
+  </head>
+  <body class="min-h-screen flex flex-col">
+    <header class="bg-white border-b border-slate-200">
+      <div class="max-w-4xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-6">
+        <span class="text-lg font-bold tracking-tight text-slate-900 whitespace-nowrap">
+          EventDrive
+        </span>
+        <div class="flex items-center gap-6 text-sm font-medium text-slate-600">
+          <a
+            href="https://docs.google.com/spreadsheets/d/1CE7dxTZbFz19XDHr8oOp3LMEPWaXW6GmGLkn6C94B10/edit"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="hover:text-slate-900 whitespace-nowrap"
+          >
+            Google Sheet
+          </a>
+          <a
+            href="https://drive.google.com/drive/folders/1aTVOUjKaYcSjY3pX1W7esuqKro-xetiu?usp=sharing"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="hover:text-slate-900 whitespace-nowrap"
+          >
+            Drive Folder
+          </a>
+        </div>
+      </div>
+    </header>
+
+    <main class="flex-1 max-w-4xl w-full mx-auto px-4 sm:px-6 py-8 space-y-6">
+      <div>
+        <h1 class="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900">
+          Upload Event Photos &amp; Videos
+        </h1>
+        <p class="mt-1 text-sm text-slate-600">
+          Creates a <span class="font-mono text-slate-800">YYMMDD_event</span> folder in Google Drive,
+          logs it to Google Sheets, or lets you add up to 10 files to an existing event.
+        </p>
+      </div>
+
+      <!-- Setup warning if APPS_SCRIPT_URL is not configured -->
+      <div
+        id="config-warning"
+        class="hidden p-4 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-900"
+      >
+        Set <span class="font-mono font-semibold">APPS_SCRIPT_URL</span> in
+        <span class="font-mono">index.html</span> to your deployed Google Apps Script Web App URL.
+      </div>
+
+      <!-- Result Banner (shown after submit) -->
+      <section
+        id="result-card"
+        class="hidden bg-white border border-emerald-200 rounded-xl p-6 space-y-4"
+      >
+        <div class="flex items-start justify-between gap-4">
+          <div>
+            <h2 class="text-base font-semibold text-slate-900">
+              Upload complete — Google Drive link ready
+            </h2>
+            <p id="result-meta" class="mt-1 text-xs text-slate-600 font-mono"></p>
+          </div>
+        </div>
+
+        <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
+          <input
+            id="result-link-input"
+            type="text"
+            readonly
+            class="flex-1 px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-lg font-mono text-xs text-slate-800 select-all"
+          />
+          <button
+            id="copy-link-btn"
+            type="button"
+            class="px-4 py-2.5 text-sm font-medium text-white bg-blue-700 hover:bg-blue-800 rounded-lg whitespace-nowrap shrink-0 transition-colors"
+          >
+            Copy Link
+          </button>
+          <a
+            id="open-drive-link"
+            href="#"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="px-4 py-2.5 text-sm font-medium text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 rounded-lg text-center whitespace-nowrap shrink-0 transition-colors"
+          >
+            Open Drive
+          </a>
+        </div>
+      </section>
+
+      <!-- Main Form -->
+      <form id="upload-form" class="bg-white border border-slate-200 rounded-xl p-6 space-y-6">
+        <!-- Existing Event Dropdown from Google Sheet -->
+        <div>
+          <div class="flex items-center justify-between gap-3 mb-2">
+            <label for="existing-select" class="text-sm font-semibold text-slate-900">
+              Existing Events (from Google Sheet)
+            </label>
+            <button
+              id="refresh-events-btn"
+              type="button"
+              class="text-xs font-medium text-slate-600 hover:text-slate-900"
+            >
+              Refresh list
+            </button>
+          </div>
+
+          <select
+            id="existing-select"
+            class="w-full h-11 px-3.5 text-sm bg-white border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:border-blue-700"
+          >
+            <option value="">Create new event (default)</option>
+          </select>
+
+          <p id="mode-helper" class="mt-2 text-xs text-slate-500">
+            Leave on default to create a new event, or select an existing event to lock Date and Event and add more files.
+          </p>
+        </div>
+
+        <hr class="border-slate-100" />
+
+        <!-- Date & Event -->
+        <div class="grid grid-cols-1 sm:grid-cols-12 gap-4">
+          <div class="sm:col-span-5">
+            <label for="date-input" class="block text-sm font-medium text-slate-800 mb-1.5">
+              Date
+            </label>
+            <input
+              id="date-input"
+              type="date"
+              required
+              class="w-full h-11 px-3.5 text-sm font-mono tabular-nums bg-white border border-slate-300 rounded-lg text-slate-900 disabled:bg-slate-100 disabled:text-slate-600 disabled:cursor-not-allowed focus:outline-none focus:border-blue-700"
+            />
+          </div>
+
+          <div class="sm:col-span-7">
+            <label for="event-input" class="block text-sm font-medium text-slate-800 mb-1.5">
+              Event
+            </label>
+            <input
+              id="event-input"
+              type="text"
+              required
+              placeholder="e.g. Science Fair, Sports Day"
+              class="w-full h-11 px-3.5 text-sm bg-white border border-slate-300 rounded-lg text-slate-900 placeholder:text-slate-400 disabled:bg-slate-100 disabled:text-slate-600 disabled:cursor-not-allowed focus:outline-none focus:border-blue-700"
+            />
+          </div>
+        </div>
+
+        <!-- Concatenated Folder Name Preview -->
+        <div class="p-3.5 bg-slate-50 border border-slate-200 rounded-lg flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+          <span class="text-xs text-slate-500">Google Drive folder name</span>
+          <span id="folder-preview" class="font-mono text-sm font-semibold text-slate-900">
+            YYMMDD_event
+          </span>
+        </div>
+
+        <hr class="border-slate-100" />
+
+        <!-- Upload Files (Photo / Video, Max 10) -->
+        <div>
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-sm font-semibold text-slate-900">
+              Upload Files (Photos / Videos)
+            </span>
+            <span id="file-counter" class="text-xs font-mono tabular-nums text-slate-600">
+              0 / 10 files
+            </span>
+          </div>
+
+          <div
+            id="dropzone"
+            class="border border-dashed border-slate-300 bg-slate-50/50 hover:border-slate-400 hover:bg-slate-50 rounded-xl p-6 text-center cursor-pointer transition-colors"
+          >
+            <input
+              id="file-input"
+              type="file"
+              accept="image/*,video/*"
+              multiple
+              class="hidden"
+            />
+            <p class="text-sm font-medium text-slate-900">
+              Click to select or drag &amp; drop photos / videos
+            </p>
+            <p class="mt-1 text-xs text-slate-500">
+              Maximum 10 files per submission (recommended under 25 MB per file)
+            </p>
+          </div>
+
+          <p id="file-alert" class="hidden mt-2 text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-2.5"></p>
+
+          <ul
+            id="file-list"
+            class="hidden mt-4 border border-slate-200 rounded-xl divide-y divide-slate-100 overflow-hidden"
+          ></ul>
+        </div>
+
+        <p id="form-error" class="hidden text-sm text-red-800 bg-red-50 border border-red-200 rounded-lg p-3"></p>
+
+        <div class="flex items-center justify-end gap-3">
+          <button
+            id="submit-btn"
+            type="submit"
+            class="px-5 py-2.5 text-sm font-semibold text-white bg-blue-700 hover:bg-blue-800 disabled:bg-slate-300 disabled:cursor-not-allowed rounded-lg transition-colors"
+          >
+            Submit &amp; Generate Drive Link
+          </button>
+        </div>
+      </form>
+    </main>
+
+    <script>
+      // Paste your deployed Google Apps Script Web App URL here:
+      const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyAgn9WcOVEk3O-7Dt6_Lys2n9eQ_0BRP7DFUdZDPb0uUBtFJ5qAqkYSf7GEdHbkDb5JQ/exec';
+      const MAX_FILES = 10;
+
+      const configWarning = document.getElementById('config-warning');
+      const existingSelect = document.getElementById('existing-select');
+      const refreshBtn = document.getElementById('refresh-events-btn');
+      const modeHelper = document.getElementById('mode-helper');
+      const dateInput = document.getElementById('date-input');
+      const eventInput = document.getElementById('event-input');
+      const folderPreview = document.getElementById('folder-preview');
+      const dropzone = document.getElementById('dropzone');
+      const fileInput = document.getElementById('file-input');
+      const fileCounter = document.getElementById('file-counter');
+      const fileAlert = document.getElementById('file-alert');
+      const fileList = document.getElementById('file-list');
+      const formError = document.getElementById('form-error');
+      const submitBtn = document.getElementById('submit-btn');
+      const uploadForm = document.getElementById('upload-form');
+      const resultCard = document.getElementById('result-card');
+      const resultMeta = document.getElementById('result-meta');
+      const resultLinkInput = document.getElementById('result-link-input');
+      const copyLinkBtn = document.getElementById('copy-link-btn');
+      const openDriveLink = document.getElementById('open-drive-link');
+
+      let eventsFromSheet = [];
+      let selectedFiles = [];
+      let isSubmitting = false;
+
+      function todayISO() {
+        const d = new Date();
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${y}-${m}-${day}`;
+      }
+
+      function formatYYMMDDEvent(dateStr, eventStr) {
+        const clean = (eventStr || '').trim().replace(/\s+/g, ' ');
+        const m = (dateStr || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+        if (!m || !clean) return 'YYMMDD_event';
+        return `${m[1].slice(2)}${m[2]}${m[3]}_${clean}`;
+      }
+
+      function formatBytes(bytes) {
+        if (!bytes) return '0 B';
+        const sizes = ['B', 'KB', 'MB', 'GB'];
+        const i = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), sizes.length - 1);
+        return `${(bytes / Math.pow(1024, i)).toFixed(i === 0 ? 0 : 1)} ${sizes[i]}`;
+      }
+
+      function isConfigured() {
+        return APPS_SCRIPT_URL && !APPS_SCRIPT_URL.includes('PASTE_YOUR_APPS_SCRIPT');
+      }
+
+      function updateFolderPreview() {
+        folderPreview.textContent = formatYYMMDDEvent(dateInput.value, eventInput.value);
+      }
+
+      function showError(msg) {
+        if (!msg) {
+          formError.classList.add('hidden');
+          formError.textContent = '';
+        } else {
+          formError.classList.remove('hidden');
+          formError.textContent = msg;
+        }
+      }
+
+      function renderFileList() {
+        fileCounter.textContent = `${selectedFiles.length} / ${MAX_FILES} files`;
+        fileList.innerHTML = '';
+
+        if (selectedFiles.length === 0) {
+          fileList.classList.add('hidden');
+          return;
+        }
+
+        fileList.classList.remove('hidden');
+        selectedFiles.forEach((item, index) => {
+          const li = document.createElement('li');
+          li.className = 'px-4 py-3 flex items-center justify-between gap-3 bg-white text-sm';
+
+          const left = document.createElement('div');
+          left.className = 'min-w-0 flex-1';
+          const nameEl = document.createElement('p');
+          nameEl.className = 'font-medium text-slate-900 truncate';
+          nameEl.textContent = item.file.name;
+
+          const metaEl = document.createElement('p');
+          metaEl.className = 'text-xs text-slate-500 font-mono tabular-nums mt-0.5';
+          metaEl.textContent = `${formatBytes(item.file.size)} · ${item.statusText}`;
+
+          left.appendChild(nameEl);
+          left.appendChild(metaEl);
+
+          const removeBtn = document.createElement('button');
+          removeBtn.type = 'button';
+          removeBtn.textContent = 'Remove';
+          removeBtn.disabled = isSubmitting;
+          removeBtn.className =
+            'text-xs font-medium text-slate-500 hover:text-red-700 disabled:opacity-40 shrink-0';
+          removeBtn.onclick = () => {
+            selectedFiles.splice(index, 1);
+            renderFileList();
+          };
+
+          li.appendChild(left);
+          li.appendChild(removeBtn);
+          fileList.appendChild(li);
+        });
+      }
+
+      function addMediaFiles(fileListObj) {
+        fileAlert.classList.add('hidden');
+        showError('');
+        const incoming = Array.from(fileListObj || []);
+        if (!incoming.length) return;
+
+        let skippedLimit = 0;
+        let skippedType = 0;
+
+        for (const file of incoming) {
+          const isMedia =
+            file.type.startsWith('image/') ||
+            file.type.startsWith('video/') ||
+            /\.(jpg|jpeg|png|gif|webp|heic|mp4|mov|avi|mkv|webm|m4v)$/i.test(file.name);
+
+          if (!isMedia) {
+            skippedType++;
+            continue;
+          }
+          if (selectedFiles.length >= MAX_FILES) {
+            skippedLimit++;
+            continue;
+          }
+          selectedFiles.push({ file, statusText: 'Ready' });
+        }
+
+        const alerts = [];
+        if (skippedType > 0) alerts.push(`${skippedType} non-photo/video file(s) skipped.`);
+        if (skippedLimit > 0) alerts.push(`Max ${MAX_FILES} files allowed; ${skippedLimit} extra skipped.`);
+        if (alerts.length > 0) {
+          fileAlert.textContent = alerts.join(' ');
+          fileAlert.classList.remove('hidden');
+        }
+        renderFileList();
+      }
+
+      async function loadEventsFromSheet() {
+        if (!isConfigured()) {
+          configWarning.classList.remove('hidden');
+          return;
+        }
+
+        refreshBtn.textContent = 'Loading...';
+        refreshBtn.disabled = true;
+
+        try {
+          const res = await fetch(APPS_SCRIPT_URL);
+          const data = await res.json();
+          if (!data.ok) throw new Error(data.error || 'Failed to read Google Sheet.');
+
+          eventsFromSheet = data.events || [];
+          const previousVal = existingSelect.value;
+          existingSelect.innerHTML = '<option value="">Create new event (default)</option>';
+
+          eventsFromSheet.forEach((ev) => {
+            const opt = document.createElement('option');
+            opt.value = String(ev.row);
+            opt.textContent = `${ev.no ? '#' + ev.no + ' · ' : ''}${formatYYMMDDEvent(ev.date, ev.event)}`;
+            existingSelect.appendChild(opt);
+          });
+
+          if (previousVal) existingSelect.value = previousVal;
+        } catch (err) {
+          showError(err.message || 'Unable to load existing events from Google Sheet.');
+        } finally {
+          refreshBtn.textContent = 'Refresh list';
+          refreshBtn.disabled = false;
+        }
+      }
+
+      existingSelect.addEventListener('change', () => {
+        showError('');
+        const rowVal = existingSelect.value;
+        if (!rowVal) {
+          dateInput.disabled = false;
+          eventInput.disabled = false;
+          dateInput.value = todayISO();
+          eventInput.value = '';
+          modeHelper.textContent =
+            'Leave on default to create a new event, or select an existing event to lock Date and Event and add more files.';
+          updateFolderPreview();
+          return;
+        }
+
+        const chosen = eventsFromSheet.find((ev) => String(ev.row) === rowVal);
+        if (chosen) {
+          dateInput.value = chosen.date || '';
+          eventInput.value = chosen.event || '';
+          dateInput.disabled = true;
+          eventInput.disabled = true;
+          modeHelper.textContent =
+            'Existing event selected — Date and Event are fixed. Upload files to add them to this folder.';
+          updateFolderPreview();
+        }
+      });
+
+      dateInput.addEventListener('input', updateFolderPreview);
+      eventInput.addEventListener('input', updateFolderPreview);
+      refreshBtn.addEventListener('click', loadEventsFromSheet);
+
+      dropzone.addEventListener('click', () => {
+        if (!isSubmitting && selectedFiles.length < MAX_FILES) fileInput.click();
+      });
+      dropzone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        dropzone.classList.add('border-blue-700', 'bg-blue-50/50');
+      });
+      dropzone.addEventListener('dragleave', () => {
+        dropzone.classList.remove('border-blue-700', 'bg-blue-50/50');
+      });
+      dropzone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dropzone.classList.remove('border-blue-700', 'bg-blue-50/50');
+        if (!isSubmitting) addMediaFiles(e.dataTransfer.files);
+      });
+      fileInput.addEventListener('change', (e) => {
+        addMediaFiles(e.target.files);
+        e.target.value = '';
+      });
+
+      function fileToBase64(file) {
+        return new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => {
+            const result = String(reader.result || '');
+            const base64 = result.includes(',') ? result.split(',')[1] : result;
+            resolve(base64);
+          };
+          reader.onerror = () => reject(new Error(`Failed to read ${file.name}`));
+          reader.readAsDataURL(file);
+        });
+      }
+
+      async function postToAppsScript(bodyObj) {
+        // Use text/plain to avoid CORS preflight failures on Google Apps Script
+        const res = await fetch(APPS_SCRIPT_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify(bodyObj),
+        });
+        const data = await res.json();
+        if (!data.ok) throw new Error(data.error || 'Apps Script request failed.');
+        return data;
+      }
+
+      uploadForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        showError('');
+        resultCard.classList.add('hidden');
+
+        if (!isConfigured()) {
+          showError('Please set APPS_SCRIPT_URL in index.html first.');
+          return;
+        }
+        if (selectedFiles.length === 0) {
+          showError('Select at least 1 photo or video (max 10).');
+          return;
+        }
+
+        const chosenRow = existingSelect.value;
+        const chosenEvent = chosenRow
+          ? eventsFromSheet.find((ev) => String(ev.row) === chosenRow)
+          : null;
+
+        if (!chosenEvent && (!dateInput.value || !eventInput.value.trim())) {
+          showError('Please fill in both Date and Event.');
+          return;
+        }
+
+        isSubmitting = true;
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Uploading...';
+        renderFileList();
+
+        try {
+          const folderRes = await postToAppsScript(
+            chosenEvent
+              ? { mode: 'existing', folderId: chosenEvent.folderId }
+              : {
+                  mode: 'new',
+                  date: dateInput.value,
+                  event: eventInput.value.trim(),
+                }
+          );
+
+          let uploadedCount = 0;
+          for (let i = 0; i < selectedFiles.length; i++) {
+            const item = selectedFiles[i];
+            item.statusText = 'Uploading...';
+            renderFileList();
+
+            const base64Data = await fileToBase64(item.file);
+            await postToAppsScript({
+              action: 'uploadFile',
+              folderId: folderRes.folderId,
+              fileName: item.file.name,
+              mimeType: item.file.type || 'application/octet-stream',
+              base64Data: base64Data,
+            });
+
+            uploadedCount++;
+            item.statusText = 'Uploaded';
+            renderFileList();
+          }
+
+          resultLinkInput.value = folderRes.driveLink;
+          openDriveLink.href = folderRes.driveLink;
+          resultMeta.textContent = `${folderRes.folderName} · ${uploadedCount} file(s) uploaded`;
+          resultCard.classList.remove('hidden');
+
+          await loadEventsFromSheet();
+        } catch (err) {
+          showError(err.message || 'Upload failed.');
+        } finally {
+          isSubmitting = false;
+          submitBtn.disabled = false;
+          submitBtn.textContent = 'Submit & Generate Drive Link';
+          renderFileList();
+        }
+      });
+
+      copyLinkBtn.addEventListener('click', async () => {
+        if (!resultLinkInput.value) return;
+        await navigator.clipboard.writeText(resultLinkInput.value);
+        copyLinkBtn.textContent = 'Copied!';
+        setTimeout(() => {
+          copyLinkBtn.textContent = 'Copy Link';
+        }, 2000);
+      });
+
+      // Init
+      dateInput.value = todayISO();
+      updateFolderPreview();
+      loadEventsFromSheet();
+    </script>
+  </body>
+</html>
